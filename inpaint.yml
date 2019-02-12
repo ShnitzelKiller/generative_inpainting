@@ -1,8 +1,8 @@
 # parameters
-DATASET: 'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
-RANDOM_CROP: False
+DATASET: 'diminished' #'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
+RANDOM_CROP: True
 VAL: False
-LOG_DIR: full_model_celeba_hq_256
+LOG_DIR: full_model_diminished_render_crop_256
 MODEL_RESTORE: ''  # '20180115220926508503_jyugpu0_places2_NORMAL_wgan_gp_full_model'
 
 GAN: 'wgan_gp'  # 'dcgan', 'lsgan', 'wgan_gp', 'one_wgan_gp'
@@ -16,6 +16,8 @@ GAN_WITH_MASK: False
 DISCOUNTED_MASK: True
 RANDOM_SEED: False
 PADDING: 'SAME'
+PATCH_STRIDE: 1
+PATCH_RATE: 2
 
 # training
 NUM_GPUS: 1
@@ -49,6 +51,10 @@ DATA_FLIST:
   imagenet: [
     'data/imagenet/train_shuffled.flist',
     'data/imagenet/validation_static_view.flist',
+  ]
+  diminished: [
+    'training_data/data_flist/train_real_shuffled.flist',
+    'training_data/data_flist/validation_real_shuffled.flist'
   ]
 
 STATIC_VIEW_SIZE: 30

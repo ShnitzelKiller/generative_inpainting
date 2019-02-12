@@ -17,7 +17,7 @@ parser.add_argument('--output', default='output.png', type=str,
                     help='Where to write output.')
 parser.add_argument('--checkpoint_dir', default='', type=str,
                     help='The directory of tensorflow checkpoint.')
-
+parser.add_argument('--invert_mask', default='false', type=str, help='Whether to invert mask (0 -> 255, 255 -> 0)')
 
 if __name__ == "__main__":
     ng.get_gpus(1)
@@ -26,8 +26,10 @@ if __name__ == "__main__":
     model = InpaintCAModel()
     image = cv2.imread(args.image)
     mask = cv2.imread(args.mask)
-
     assert image.shape == mask.shape
+    if args.invert_mask == 'true':
+        print('inverting mask')
+        mask = 255 - mask
 
     h, w, _ = image.shape
     grid = 8

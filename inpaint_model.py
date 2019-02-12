@@ -27,7 +27,7 @@ class InpaintCAModel(Model):
         super().__init__('InpaintCAModel')
 
     def build_inpaint_net(self, x, mask, config=None, reuse=False,
-                          training=True, padding='SAME', name='inpaint_net'):
+                          training=True, padding='SAME', name='inpaint_net', patch_stride=1, patch_rate=2):
         """Inpaint network.
 
         Args:
@@ -94,7 +94,7 @@ class InpaintCAModel(Model):
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv5')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv6',
                          activation=tf.nn.relu)
-            x, offset_flow = contextual_attention(x, x, mask_s, 3, 1, rate=2)
+            x, offset_flow = contextual_attention(x, x, mask_s, 3, stride=patch_stride, rate=patch_rate)
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10')
             pm = x
@@ -150,7 +150,7 @@ class InpaintCAModel(Model):
         batch_incomplete = batch_pos*(1.-mask)
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=reuse, training=training,
-            padding=config.PADDING)
+            padding=config.PADDING, patch_stride=config.PATCH_STRIDE, patch_rate=config.PATCH_RATE)
         if config.PRETRAIN_COARSE_NETWORK:
             batch_predicted = x1
             logger.info('Set batch_predicted to x1.')
@@ -263,7 +263,7 @@ class InpaintCAModel(Model):
         # inpaint
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=True,
-            training=False, padding=config.PADDING)
+            training=False, padding=config.PADDING, patch_stride=config.PATCH_STRIDE, patch_rage=config.PATCH_RATE)
         if config.PRETRAIN_COARSE_NETWORK:
             batch_predicted = x1
             logger.info('Set batch_predicted to x1.')
