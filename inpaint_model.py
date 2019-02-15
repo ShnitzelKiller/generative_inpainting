@@ -27,7 +27,7 @@ class InpaintCAModel(Model):
         super().__init__('InpaintCAModel')
 
     def build_inpaint_net(self, x, mask, config=None, reuse=False,
-                          training=True, padding='SAME', name='inpaint_net', patch_stride=1, patch_rate=2):
+                          training=True, padding='SAME', name='inpaint_net', patch_ksize=3, patch_stride=1, patch_rate=2):
         """Inpaint network.
 
         Args:
@@ -94,7 +94,7 @@ class InpaintCAModel(Model):
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv5')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv6',
                          activation=tf.nn.relu)
-            x, offset_flow = contextual_attention(x, x, mask_s, 3, stride=patch_stride, rate=patch_rate)
+            x, offset_flow = contextual_attention(x, x, mask_s, ksize=patch_ksize, stride=patch_stride, rate=patch_rate)
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10')
             pm = x
@@ -150,7 +150,7 @@ class InpaintCAModel(Model):
         batch_incomplete = batch_pos*(1.-mask)
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=reuse, training=training,
-            padding=config.PADDING, patch_stride=config.PATCH_STRIDE, patch_rate=config.PATCH_RATE)
+            padding=config.PADDING, patch_ksize=config.PATCH_KSIZE, patch_stride=config.PATCH_STRIDE, patch_rate=config.PATCH_RATE)
         if config.PRETRAIN_COARSE_NETWORK:
             batch_predicted = x1
             logger.info('Set batch_predicted to x1.')
@@ -263,7 +263,7 @@ class InpaintCAModel(Model):
         # inpaint
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=True,
-            training=False, padding=config.PADDING, patch_stride=config.PATCH_STRIDE, patch_rage=config.PATCH_RATE)
+            training=False, padding=config.PADDING, patch_ksize=config.PATCH_KSIZE, patch_stride=config.PATCH_STRIDE, patch_rate=config.PATCH_RATE)
         if config.PRETRAIN_COARSE_NETWORK:
             batch_predicted = x1
             logger.info('Set batch_predicted to x1.')
@@ -273,7 +273,10 @@ class InpaintCAModel(Model):
         # apply mask and reconstruct
         batch_complete = batch_predicted*mask + batch_incomplete*(1.-mask)
         # global image visualization
-        viz_img = [batch_pos, batch_incomplete, batch_complete]
+        img_size = [dim for dim in batch_incomplete.shape]
+        img_size[2] = 1
+        border = tf.zeros(img_size)
+        viz_img = [border, batch_pos, border, batch_incomplete, border, batch_complete, border]
         if offset_flow is not None:
             viz_img.append(
                 resize(offset_flow, scale=4,
@@ -292,7 +295,7 @@ class InpaintCAModel(Model):
         return self.build_infer_graph(batch_data, config, bbox, name)
 
 
-    def build_server_graph(self, batch_data, reuse=False, is_training=False):
+    def build_server_graph(self, batch_data, reuse=False, is_training=False, config=None):
         """
         """
         # generate mask, 1 represents masked point
@@ -304,7 +307,9 @@ class InpaintCAModel(Model):
         # inpaint
         x1, x2, flow = self.build_inpaint_net(
             batch_incomplete, masks, reuse=reuse, training=is_training,
-            config=None)
+            config=None) if config is None else self.build_inpaint_net(
+            batch_incomplete, masks, reuse=reuse, training=is_training,
+                config=config, padding=config.PADDING, patch_ksize=config.PATCH_KSIZE, patch_stride=config.PATCH_STRIDE, patch_rate=config.PATCH_RATE)
         batch_predict = x2
         # apply mask and reconstruct
         batch_complete = batch_predict*masks + batch_incomplete*(1-masks)

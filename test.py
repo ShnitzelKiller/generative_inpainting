@@ -1,5 +1,5 @@
 import argparse
-
+from util import str2bool
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -18,16 +18,19 @@ parser.add_argument('--output', default='output.png', type=str,
 parser.add_argument('--checkpoint_dir', default='', type=str,
                     help='The directory of tensorflow checkpoint.')
 parser.add_argument('--invert_mask', default='false', type=str, help='Whether to invert mask (0 -> 255, 255 -> 0)')
+parser.add_argument('--config', default='inpaint.yml', type=str, help='config file to use')
 
 if __name__ == "__main__":
-    ng.get_gpus(1)
-    args = parser.parse_args()
 
+    #ng.get_gpus(1)
+    args = parser.parse_args()
+    config = ng.Config(args.config)
+    invert_mask = str2bool(args.invert_mask)
     model = InpaintCAModel()
     image = cv2.imread(args.image)
     mask = cv2.imread(args.mask)
     assert image.shape == mask.shape
-    if args.invert_mask == 'true':
+    if invert_mask:
         print('inverting mask')
         mask = 255 - mask
 
@@ -45,7 +48,7 @@ if __name__ == "__main__":
     sess_config.gpu_options.allow_growth = True
     with tf.Session(config=sess_config) as sess:
         input_image = tf.constant(input_image, dtype=tf.float32)
-        output = model.build_server_graph(input_image)
+        output = model.build_server_graph(input_image, config=config)
         output = (output + 1.) * 127.5
         output = tf.reverse(output, [-1])
         output = tf.saturate_cast(output, tf.uint8)
