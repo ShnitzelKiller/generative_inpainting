@@ -2,8 +2,8 @@
 DATASET: 'diminished' #'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
 RANDOM_CROP: True
 VAL: False
-LOG_DIR: full_model_diminished_rectified_256_thumb_wide_patches
-MODEL_RESTORE: ''  # '20180115220926508503_jyugpu0_places2_NORMAL_wgan_gp_full_model'
+LOG_DIR: full_model_diminished_rectified_256_thumb_wide_patches_multires
+MODEL_RESTORE: '20190215011336131820_sanka.cs.washington.edu_diminished_NORMAL_wgan_gp_full_model_diminished_rectified_256_thumb_wide_patches_multires'  # '20180115220926508503_jyugpu0_places2_NORMAL_wgan_gp_full_model'
 
 GAN: 'wgan_gp'  # 'dcgan', 'lsgan', 'wgan_gp', 'one_wgan_gp'
 PRETRAIN_COARSE_NETWORK: False
@@ -19,6 +19,7 @@ PADDING: 'SAME'
 PATCH_KSIZE: 5
 PATCH_STRIDE: 1
 PATCH_RATE: 2
+MULTIRES: True
 
 # training
 NUM_GPUS: 1
