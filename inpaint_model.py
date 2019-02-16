@@ -1,6 +1,5 @@
 """ common model for DCGAN """
 import logging
-
 import cv2
 import neuralgym as ng
 import tensorflow as tf
@@ -27,7 +26,7 @@ class InpaintCAModel(Model):
         super().__init__('InpaintCAModel')
 
     def build_inpaint_net(self, x, mask, config=None, reuse=False,
-                          training=True, padding='SAME', name='inpaint_net', patch_ksize=3, patch_stride=1, patch_rate=2):
+                          training=True, padding='SAME', name='inpaint_net'):
         """Inpaint network.
 
         Args:
@@ -36,10 +35,12 @@ class InpaintCAModel(Model):
         Returns:
             [-1, 1] as predicted image
         """
+        multires = config.MULTIRES
         xin = x
         offset_flow = None
         ones_x = tf.ones_like(x)[:, :, :, 0:1]
         x = tf.concat([x, ones_x, ones_x*mask], axis=3)
+        
 
         # two stage network
         cnum = 32
@@ -94,11 +95,22 @@ class InpaintCAModel(Model):
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv5')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv6',
                          activation=tf.nn.relu)
-            x, offset_flow = contextual_attention(x, x, mask_s, ksize=patch_ksize, stride=patch_stride, rate=patch_rate)
+            
+            if multires: #scale down feature map, run contextual attention, scale up and paste inpainted region into original feature map
+                logger.info('USING MULTIRES')
+                orig_size = x.shape[1:3]
+                half_size = tf.TensorShape([dim//2 for dim in orig_size])
+                x_half = tf.image.resize_images(x, half_size, align_corners=True, method=tf.image.ResizeMethod.BILINEAR) #half resolution feature map
+                mask_s_half = resize_mask_like(mask, x_half)
+                x_half, offset_flow_half = contextual_attention(x, x, mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE) #extra flow then upscale
+                x_half_upscaled = tf.image.resize_images(x_half, orig_size, align_corners=True, method=tf.image.ResizeMethod.BILINEAR)
+                x = x_half_upscaled*mask_s + x*(1.-mask_s)
+                
+            x, offset_flow = contextual_attention(x, x, mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10')
             pm = x
-            x = tf.concat([x_hallu, pm], axis=3)
+            x = tf.concat([x_hallu, pm], axis=3) #join branches together
 
             x = gen_conv(x, 4*cnum, 3, 1, name='allconv11')
             x = gen_conv(x, 4*cnum, 3, 1, name='allconv12')
@@ -150,7 +162,7 @@ class InpaintCAModel(Model):
         batch_incomplete = batch_pos*(1.-mask)
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=reuse, training=training,
-            padding=config.PADDING, patch_ksize=config.PATCH_KSIZE, patch_stride=config.PATCH_STRIDE, patch_rate=config.PATCH_RATE)
+            padding=config.PADDING)
         if config.PRETRAIN_COARSE_NETWORK:
             batch_predicted = x1
             logger.info('Set batch_predicted to x1.')
@@ -178,7 +190,14 @@ class InpaintCAModel(Model):
         if summary:
             scalar_summary('losses/l1_loss', losses['l1_loss'])
             scalar_summary('losses/ae_loss', losses['ae_loss'])
-            viz_img = [batch_pos, batch_incomplete, batch_complete]
+            img_size = [dim for dim in batch_incomplete.shape]
+            img_size[2] = 5
+            border = tf.zeros(tf.TensorShape(img_size))
+            viz_img = [batch_pos, border, batch_incomplete, border, batch_complete, border]
+            if not config.PRETRAIN_COARSE_NETWORK:
+                batch_complete_coarse = x1*mask + batch_incomplete*(1.-mask)
+                viz_img.append(batch_complete_coarse)
+                viz_img.append(border)
             if offset_flow is not None:
                 viz_img.append(
                     resize(offset_flow, scale=4,
@@ -263,7 +282,7 @@ class InpaintCAModel(Model):
         # inpaint
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=True,
-            training=False, padding=config.PADDING, patch_ksize=config.PATCH_KSIZE, patch_stride=config.PATCH_STRIDE, patch_rate=config.PATCH_RATE)
+            training=False, padding=config.PADDING)
         if config.PRETRAIN_COARSE_NETWORK:
             batch_predicted = x1
             logger.info('Set batch_predicted to x1.')
@@ -274,9 +293,12 @@ class InpaintCAModel(Model):
         batch_complete = batch_predicted*mask + batch_incomplete*(1.-mask)
         # global image visualization
         img_size = [dim for dim in batch_incomplete.shape]
-        img_size[2] = 1
-        border = tf.zeros(img_size)
+        img_size[2] = 5
+        border = tf.zeros(tf.TensorShape(img_size))
         viz_img = [border, batch_pos, border, batch_incomplete, border, batch_complete, border]
+        if not config.PRETRAIN_COARSE_NETWORK:
+            batch_complete_coarse = x1*mask + batch_incomplete*(1.-mask)
+            viz_img.append(batch_complete_coarse)
         if offset_flow is not None:
             viz_img.append(
                 resize(offset_flow, scale=4,
@@ -307,9 +329,7 @@ class InpaintCAModel(Model):
         # inpaint
         x1, x2, flow = self.build_inpaint_net(
             batch_incomplete, masks, reuse=reuse, training=is_training,
-            config=None) if config is None else self.build_inpaint_net(
-            batch_incomplete, masks, reuse=reuse, training=is_training,
-                config=config, padding=config.PADDING, patch_ksize=config.PATCH_KSIZE, patch_stride=config.PATCH_STRIDE, patch_rate=config.PATCH_RATE)
+            config=config)
         batch_predict = x2
         # apply mask and reconstruct
         batch_complete = batch_predict*masks + batch_incomplete*(1-masks)
