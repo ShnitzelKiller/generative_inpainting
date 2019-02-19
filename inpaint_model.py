@@ -98,14 +98,21 @@ class InpaintCAModel(Model):
             
             if multires: #scale down feature map, run contextual attention, scale up and paste inpainted region into original feature map
                 logger.info('USING MULTIRES')
-                orig_size = x.shape[1:3]
-                half_size = tf.TensorShape([dim//2 for dim in orig_size])
-                x_half = tf.image.resize_images(x, half_size, align_corners=True, method=tf.image.ResizeMethod.BILINEAR) #half resolution feature map
-                mask_s_half = resize_mask_like(mask, x_half)
-                x_half, offset_flow_half = contextual_attention(x, x, mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE) #extra flow then upscale
-                x_half_upscaled = tf.image.resize_images(x_half, orig_size, align_corners=True, method=tf.image.ResizeMethod.BILINEAR)
-                x = x_half_upscaled*mask_s + x*(1.-mask_s)
-                
+
+                x_multi = [x]
+                mask_multi = [mask_s]
+                for i in range(config.LEVELS-1):
+                    x_prev = x_multi[i]
+                    x_multi.append(gen_conv(x_prev, 4*cnum, 3, 2, name='pyramid_downsample_'+str(i+1)))
+                    mask_multi.append(resize_mask_like(mask_s, x_multi[i+1]))
+                x_multi.reverse()
+                mask_multi.reverse()
+                x = x_multi[0]
+                for i in range(config.LEVELS-1):
+                    x, _ = contextual_attention(x, x, mask_multi[i], ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
+                    x = resize(x) #TODO: look into using deconv instead of just upsampling
+                    x = x * mask_multi[i+1] + x_multi[i+1] * mask_multi[i+1]
+
             x, offset_flow = contextual_attention(x, x, mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10')
