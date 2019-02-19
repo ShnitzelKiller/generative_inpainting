@@ -98,20 +98,24 @@ class InpaintCAModel(Model):
             
             if multires: #scale down feature map, run contextual attention, scale up and paste inpainted region into original feature map
                 logger.info('USING MULTIRES')
-
+                logger.info('original x shape: ' + str(x.shape))
+                logger.info('original mask shape: ' + str(mask_s.shape))
                 x_multi = [x]
                 mask_multi = [mask_s]
                 for i in range(config.LEVELS-1):
-                    x_prev = x_multi[i]
-                    x_multi.append(gen_conv(x_prev, 4*cnum, 3, 2, name='pyramid_downsample_'+str(i+1)))
-                    mask_multi.append(resize_mask_like(mask_s, x_multi[i+1]))
+                    x = gen_conv(x, 4*cnum, 3, 2, name='pyramid_downsample_'+str(i+1))
+                    #x = resize(x, scale=0.5)
+                    x_multi.append(x)
+                    mask_multi.append(resize_mask_like(mask_s, x))
+                    logger.info('x shape: ' + str(x_multi[i+1].shape))
+                    logger.info('mask shape: ' + str(mask_multi[i+1].shape))
                 x_multi.reverse()
                 mask_multi.reverse()
-                x = x_multi[0]
                 for i in range(config.LEVELS-1):
                     x, _ = contextual_attention(x, x, mask_multi[i], ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
-                    x = resize(x) #TODO: look into using deconv instead of just upsampling
-                    x = x * mask_multi[i+1] + x_multi[i+1] * mask_multi[i+1]
+                    x = resize(x, scale=2) #TODO: look into using deconv instead of just upsampling
+                    x = x * mask_multi[i+1] + x_multi[i+1] * (1.-mask_multi[i+1])
+                    logger.info('upsampled x shape: ' + str(x.shape))
 
             x, offset_flow = contextual_attention(x, x, mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
