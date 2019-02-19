@@ -2,7 +2,7 @@
 DATASET: 'diminished' #'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
 RANDOM_CROP: True
 VAL: False
-LOG_DIR: full_model_diminished_rectified_256_thumb_wide_patches_multires_2_levels
+LOG_DIR: full_model_diminished_rectified_256_thumb_wide_patches_multires_4_levels
 MODEL_RESTORE: ''
 
 GAN: 'wgan_gp'  # 'dcgan', 'lsgan', 'wgan_gp', 'one_wgan_gp'
@@ -20,7 +20,7 @@ PATCH_KSIZE: 5
 PATCH_STRIDE: 1
 PATCH_RATE: 2
 MULTIRES: True
-LEVELS: 2
+LEVELS: 4
 
 # training
 NUM_GPUS: 1
