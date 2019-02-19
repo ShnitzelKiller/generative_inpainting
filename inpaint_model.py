@@ -103,8 +103,8 @@ class InpaintCAModel(Model):
                 x_multi = [x]
                 mask_multi = [mask_s]
                 for i in range(config.LEVELS-1):
-                    x = gen_conv(x, 4*cnum, 3, 2, name='pyramid_downsample_'+str(i+1))
-                    #x = resize(x, scale=0.5)
+                    #x = gen_conv(x, 4*cnum, 3, 2, name='pyramid_downsample_'+str(i+1))
+                    x = resize(x, scale=0.5)
                     x_multi.append(x)
                     mask_multi.append(resize_mask_like(mask_s, x))
                     logger.info('x shape: ' + str(x_multi[i+1].shape))
