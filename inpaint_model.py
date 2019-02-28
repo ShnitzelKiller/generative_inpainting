@@ -112,7 +112,7 @@ class InpaintCAModel(Model):
                 x_multi.reverse()
                 mask_multi.reverse()
                 for i in range(config.LEVELS-1):
-                    x, flow = contextual_attention(x, x, mask_multi[i], ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
+                    x, flow = contextual_attention(x, x, mask_multi[i], ksize=3, stride=1, rate=1)
                     flows.append(flow)
                     x = resize(x, scale=2) #TODO: look into using deconv instead of just upsampling
                     x = x * mask_multi[i+1] + x_multi[i+1] * (1.-mask_multi[i+1])
