@@ -95,7 +95,7 @@ class InpaintCAModel(Model):
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv5')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv6',
                          activation=tf.nn.relu)
-            
+            flows = []
             if multires: #scale down feature map, run contextual attention, scale up and paste inpainted region into original feature map
                 logger.info('USING MULTIRES')
                 logger.info('original x shape: ' + str(x.shape))
@@ -112,12 +112,14 @@ class InpaintCAModel(Model):
                 x_multi.reverse()
                 mask_multi.reverse()
                 for i in range(config.LEVELS-1):
-                    x, _ = contextual_attention(x, x, mask_multi[i], ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
+                    x, flow = contextual_attention(x, x, mask_multi[i], ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
+                    flows.append(flow)
                     x = resize(x, scale=2) #TODO: look into using deconv instead of just upsampling
                     x = x * mask_multi[i+1] + x_multi[i+1] * (1.-mask_multi[i+1])
                     logger.info('upsampled x shape: ' + str(x.shape))
 
             x, offset_flow = contextual_attention(x, x, mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
+            flows.append(offset_flow)
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10')
             pm = x
@@ -131,7 +133,7 @@ class InpaintCAModel(Model):
             x = gen_conv(x, cnum//2, 3, 1, name='allconv16')
             x = gen_conv(x, 3, 3, 1, activation=None, name='allconv17')
             x_stage2 = tf.clip_by_value(x, -1., 1.)
-        return x_stage1, x_stage2, offset_flow
+        return x_stage1, x_stage2, flows
 
     def build_wgan_local_discriminator(self, x, reuse=False, training=True):
         with tf.variable_scope('discriminator_local', reuse=reuse):
@@ -210,9 +212,13 @@ class InpaintCAModel(Model):
                 viz_img.append(batch_complete_coarse)
                 viz_img.append(border)
             if offset_flow is not None:
-                viz_img.append(
-                    resize(offset_flow, scale=4,
-                           func=tf.image.resize_nearest_neighbor))
+                scale = 2 << len(offset_flow)
+                for flow in offset_flow:
+                    viz_img.append(
+                        resize(flow, scale=scale,
+                               func=tf.image.resize_nearest_neighbor))
+                    viz_img.append(border)
+                    scale >>= 1
             images_summary(
                 tf.concat(viz_img, axis=2),
                 'raw_incomplete_predicted_complete', config.VIZ_MAX_OUT)
@@ -311,9 +317,13 @@ class InpaintCAModel(Model):
             batch_complete_coarse = x1*mask + batch_incomplete*(1.-mask)
             viz_img.append(batch_complete_coarse)
         if offset_flow is not None:
-            viz_img.append(
-                resize(offset_flow, scale=4,
-                       func=tf.image.resize_nearest_neighbor))
+            scale = 2 << len(offset_flow)
+            for flow in offset_flow:
+                viz_img.append(
+                    resize(flow, scale=scale,
+                           func=tf.image.resize_nearest_neighbor))
+                viz_img.append(border)
+                scale >>= 1
         images_summary(
             tf.concat(viz_img, axis=2),
             name+'_raw_incomplete_complete', config.VIZ_MAX_OUT)
