@@ -2,8 +2,8 @@
 DATASET: 'diminished' #'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
 RANDOM_CROP: True
 VAL: False
-LOG_DIR: full_model_diminished_rectified_256_thumb_wide_patches
-MODEL_RESTORE: ''  # '20180115220926508503_jyugpu0_places2_NORMAL_wgan_gp_full_model'
+LOG_DIR: full_model_diminished_real_rectified_256_multires_3_levels_downsample_narrow_pyramid
+MODEL_RESTORE: ''
 
 GAN: 'wgan_gp'  # 'dcgan', 'lsgan', 'wgan_gp', 'one_wgan_gp'
 PRETRAIN_COARSE_NETWORK: False
@@ -16,11 +16,11 @@ GAN_WITH_MASK: False
 DISCOUNTED_MASK: True
 RANDOM_SEED: False
 PADDING: 'SAME'
-PATCH_KSIZE: 5
+PATCH_KSIZE: 3
 PATCH_STRIDE: 1
 PATCH_RATE: 2
-MULTIRES: False
-LEVELS: 1
+MULTIRES: True
+LEVELS: 3
 
 # training
 NUM_GPUS: 1
@@ -32,8 +32,6 @@ GRADS_SUMMARY: False
 GRADIENT_CLIP: False
 GRADIENT_CLIP_VALUE: 0.1
 VAL_PSTEPS: 1000
-GAMMA: 0.45455
-EXPOSURE: 1
 
 # data
 DATA_FLIST:
@@ -58,8 +56,8 @@ DATA_FLIST:
     'data/imagenet/validation_static_view.flist',
   ]
   diminished: [
-    'training_data/data_flist/train_tex_rectified_fixed.flist',
-    'training_data/data_flist/validation_tex_rectified_fixed.flist'
+    'training_data/data_flist/train_real_rectified_shuffled.flist',
+    'training_data/data_flist/validation_real_rectified_shuffled.flist'
   ]
 
 STATIC_VIEW_SIZE: 30

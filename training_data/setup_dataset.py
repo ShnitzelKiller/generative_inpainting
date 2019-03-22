@@ -15,6 +15,7 @@ parser.add_argument('--train_subdir', default='training', type=str, help='The tr
 parser.add_argument('--validation_subdir', default='validation', type=str, help='The validation subdirectory name')
 parser.add_argument('--split', default=None, type=float, help='percentage of the dataset to use for validation')
 parser.add_argument('--suffix', default=None, type=str, help='suffix of files to choose for dataset')
+parser.add_argument('--prefix', default=None, type=str, help='prefix of files to choose for dataset')
 
 if __name__ == "__main__":
 
@@ -52,6 +53,8 @@ if __name__ == "__main__":
         folder = os.listdir(args.folder_path)
         if args.suffix is not None:
             folder = [item for item in folder if item.endswith(args.suffix)]
+        if args.prefix is not None:
+            folder = [item for item in folder if item.startswith(args.prefix)]
         n = len(folder)
         split = args.split * n
         for i, item in enumerate(folder):

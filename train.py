@@ -39,7 +39,7 @@ if __name__ == "__main__":
     with open(config.DATA_FLIST[config.DATASET][0]) as f:
         fnames = f.read().splitlines()
     data = ng.data.DataFromFNames(
-        fnames, config.IMG_SHAPES, random_crop=config.RANDOM_CROP)
+        fnames, config.IMG_SHAPES, random_crop=config.RANDOM_CROP, gamma=config.GAMMA, exposure=config.EXPOSURE)
     images = data.data_pipeline(config.BATCH_SIZE)
     # main model
     model = InpaintCAModel()

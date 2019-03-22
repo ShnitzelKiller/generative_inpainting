@@ -2,8 +2,8 @@
 DATASET: 'diminished' #'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
 RANDOM_CROP: True
 VAL: False
-LOG_DIR: full_model_diminished_rectified_256_thumb_wide_patches
-MODEL_RESTORE: ''  # '20180115220926508503_jyugpu0_places2_NORMAL_wgan_gp_full_model'
+LOG_DIR: full_model_diminished_tex_rectified_256_wide_patches
+MODEL_RESTORE: '20190305012621592702_sanka.cs.washington.edu_diminished_NORMAL_wgan_gp_full_model_diminished_tex_rectified_256_wide_patches'
 
 GAN: 'wgan_gp'  # 'dcgan', 'lsgan', 'wgan_gp', 'one_wgan_gp'
 PRETRAIN_COARSE_NETWORK: False
@@ -20,7 +20,7 @@ PATCH_KSIZE: 5
 PATCH_STRIDE: 1
 PATCH_RATE: 2
 MULTIRES: False
-LEVELS: 1
+LEVELS: 3
 
 # training
 NUM_GPUS: 1
@@ -33,7 +33,7 @@ GRADIENT_CLIP: False
 GRADIENT_CLIP_VALUE: 0.1
 VAL_PSTEPS: 1000
 GAMMA: 0.45455
-EXPOSURE: 1
+EXPOSURE: 0.318309
 
 # data
 DATA_FLIST:
@@ -64,10 +64,10 @@ DATA_FLIST:
 
 STATIC_VIEW_SIZE: 30
 IMG_SHAPES: [256, 256, 3]
-HEIGHT: 128
-WIDTH: 128
-MAX_DELTA_HEIGHT: 32
-MAX_DELTA_WIDTH: 32
+HEIGHT: 96
+WIDTH: 96
+MAX_DELTA_HEIGHT: 0
+MAX_DELTA_WIDTH: 0
 BATCH_SIZE: 16
 VERTICAL_MARGIN: 0
 HORIZONTAL_MARGIN: 0
