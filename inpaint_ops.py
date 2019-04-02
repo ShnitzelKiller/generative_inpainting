@@ -263,12 +263,14 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     # process mask
     if mask is None:
         mask = tf.zeros([1, bs[1], bs[2], 1])
+    int_ms = mask.get_shape().as_list()
     m = tf.extract_image_patches(
         mask, [1,ksize,ksize,1], [1,stride,stride,1], [1,1,1,1], padding='SAME')
-    m = tf.reshape(m, [1, -1, ksize, ksize, 1])
+    m = tf.reshape(m, [int_ms[0], -1, ksize, ksize, 1])
     m = tf.transpose(m, [0, 2, 3, 4, 1])  # transpose to b*k*k*c*hw
-    m = m[0]
-    mm = tf.cast(tf.equal(tf.reduce_mean(m, axis=[0,1,2], keep_dims=True), 0.), tf.float32)
+    #m = m[0]
+    mm = tf.cast(tf.equal(tf.reduce_mean(m, axis=[1,2,3], keep_dims=True), 0.), tf.float32)
+    mm_groups = tf.split(mm, int_ms[0], axis=0)
     w_groups = tf.split(w, int_bs[0], axis=0)
     raw_w_groups = tf.split(raw_w, int_bs[0], axis=0)
     y = []
@@ -276,7 +278,7 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
     k = fuse_k
     scale = softmax_scale
     fuse_weight = tf.reshape(tf.eye(k), [k, k, 1, 1])
-    for xi, wi, raw_wi in zip(f_groups, w_groups, raw_w_groups):
+    for xi, wi, raw_wi, mi in zip(f_groups, w_groups, raw_w_groups, mm_groups):
         # conv for compare
         wi = wi[0]
         wi_normed = wi / tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(wi), axis=[0,1,2])), 1e-4)
@@ -295,9 +297,9 @@ def contextual_attention(f, b, mask=None, ksize=3, stride=1, rate=1,
         yi = tf.reshape(yi, [1, fs[1], fs[2], bs[1]*bs[2]])
 
         # softmax to match
-        yi *=  mm  # mask
+        yi *=  mi[0]  # mask
         yi = tf.nn.softmax(yi*scale, 3)
-        yi *=  mm  # mask
+        yi *=  mi[0]  # mask
 
         offset = tf.argmax(yi, axis=3, output_type=tf.int32)
         offset = tf.stack([offset // fs[2], offset % fs[2]], axis=-1)

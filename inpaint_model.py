@@ -26,7 +26,7 @@ class InpaintCAModel(Model):
         super().__init__('InpaintCAModel')
 
     def build_inpaint_net(self, x, mask, config=None, reuse=False,
-                          training=True, padding='SAME', name='inpaint_net'):
+                          training=True, padding='SAME', name='inpaint_net', exclusionmask=None):
         """Inpaint network.
 
         Args:
@@ -40,7 +40,8 @@ class InpaintCAModel(Model):
         offset_flow = None
         ones_x = tf.ones_like(x)[:, :, :, 0:1]
         x = tf.concat([x, ones_x, ones_x*mask], axis=3)
-        
+        if exclusionmask is not None:
+            exclusionmask = tf.cast(tf.less(exclusionmask[:,:,:,0:1], 127.5), tf.float32)
 
         # two stage network
         cnum = 32
@@ -96,29 +97,44 @@ class InpaintCAModel(Model):
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv6',
                          activation=tf.nn.relu)
             flows = []
+            if exclusionmask is not None:
+                ex_mask_s = resize_mask_like(exclusionmask, x)
             if multires: #scale down feature map, run contextual attention, scale up and paste inpainted region into original feature map
                 logger.info('USING MULTIRES')
                 logger.info('original x shape: ' + str(x.shape))
                 logger.info('original mask shape: ' + str(mask_s.shape))
                 x_multi = [x]
                 mask_multi = [mask_s]
+                if exclusionmask is not None:
+                    exclusion_mask_multi = [ex_mask_s]
                 for i in range(config.LEVELS-1):
                     #x = gen_conv(x, 4*cnum, 3, 2, name='pyramid_downsample_'+str(i+1))
                     x = resize(x, scale=0.5)
                     x_multi.append(x)
                     mask_multi.append(resize_mask_like(mask_s, x))
+                    if exclusionmask is not None:
+                        exclusion_mask_multi.append(resize_mask_like(ex_mask_s, x))
+                        logger.info('exclusionmask shape: ' + str(exclusion_mask_multi[i+1].shape))
                     logger.info('x shape: ' + str(x_multi[i+1].shape))
                     logger.info('mask shape: ' + str(mask_multi[i+1].shape))
                 x_multi.reverse()
                 mask_multi.reverse()
+                if exclusionmask is not None:
+                    exclusion_mask_multi.reverse()
                 for i in range(config.LEVELS-1):
-                    x, flow = contextual_attention(x, x, mask_multi[i], ksize=3, stride=1, rate=1)
+                    if exclusionmask is not None:
+                        totalmask = mask_multi[i] + exclusion_mask_multi[i]
+                        print('total mask shape:', totalmask.shape)
+                    else:
+                        totalmask = tf.tile(mask_multi[i], [config.BATCH_SIZE, 1, 1, 1])
+                    x, flow = contextual_attention(x, x, totalmask, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
+                    #x, flow = contextual_attention(x, x, mask_multi[i], ksize=3, stride=1, rate=1)
                     flows.append(flow)
                     x = resize(x, scale=2) #TODO: look into using deconv instead of just upsampling
                     x = x * mask_multi[i+1] + x_multi[i+1] * (1.-mask_multi[i+1])
                     logger.info('upsampled x shape: ' + str(x.shape))
 
-            x, offset_flow = contextual_attention(x, x, mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
+            x, offset_flow = contextual_attention(x, x, tf.tile(mask_s, [config.BATCH_SIZE, 1, 1, 1]) if exclusionmask is None else mask_s + ex_mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
             flows.append(offset_flow)
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10')
@@ -167,7 +183,7 @@ class InpaintCAModel(Model):
             return dout_local, dout_global
 
     def build_graph_with_losses(self, batch_data, config, training=True,
-                                summary=False, reuse=False):
+                                summary=False, reuse=False, exclusionmask=None):
         batch_pos = batch_data / 127.5 - 1.
         # generate mask, 1 represents masked point
         bbox = random_bbox(config)
@@ -175,7 +191,7 @@ class InpaintCAModel(Model):
         batch_incomplete = batch_pos*(1.-mask)
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=reuse, training=training,
-            padding=config.PADDING)
+            padding=config.PADDING, exclusionmask=exclusionmask)
         if config.PRETRAIN_COARSE_NETWORK:
             batch_predicted = x1
             logger.info('Set batch_predicted to x1.')
@@ -285,7 +301,7 @@ class InpaintCAModel(Model):
             tf.GraphKeys.TRAINABLE_VARIABLES, 'discriminator')
         return g_vars, d_vars, losses
 
-    def build_infer_graph(self, batch_data, config, bbox=None, name='val'):
+    def build_infer_graph(self, batch_data, config, bbox=None, name='val', exclusionmask=None):
         """
         """
         config.MAX_DELTA_HEIGHT = 0
@@ -329,16 +345,16 @@ class InpaintCAModel(Model):
             name+'_raw_incomplete_complete', config.VIZ_MAX_OUT)
         return batch_complete
 
-    def build_static_infer_graph(self, batch_data, config, name):
+    def build_static_infer_graph(self, batch_data, config, name, exclusionmask=None):
         """
         """
         # generate mask, 1 represents masked point
         bbox = (tf.constant(config.HEIGHT//2), tf.constant(config.WIDTH//2),
                 tf.constant(config.HEIGHT), tf.constant(config.WIDTH))
-        return self.build_infer_graph(batch_data, config, bbox, name)
+        return self.build_infer_graph(batch_data, config, bbox, name, exclusionmask=exclusionmask)
 
 
-    def build_server_graph(self, batch_data, reuse=False, is_training=False, config=None):
+    def build_server_graph(self, batch_data, reuse=False, is_training=False, config=None, exclusionmask=None):
         """
         """
         # generate mask, 1 represents masked point
@@ -350,7 +366,7 @@ class InpaintCAModel(Model):
         # inpaint
         x1, x2, flow = self.build_inpaint_net(
             batch_incomplete, masks, reuse=reuse, training=is_training,
-            config=config)
+            config=config, exclusionmask=exclusionmask)
         batch_predict = x2
         # apply mask and reconstruct
         batch_complete = batch_predict*masks + batch_incomplete*(1-masks)
