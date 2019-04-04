@@ -23,6 +23,8 @@ MULTIRES: False
 LEVELS: 1
 GAMMA: 1
 EXPOSURE: 1
+GATING: False
+ATTENTION_MASK: True
 
 # training
 NUM_GPUS: 1

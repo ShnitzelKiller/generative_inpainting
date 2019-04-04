@@ -23,7 +23,7 @@ parser.add_argument('--config', default='inpaint.yml', type=str, help='config fi
 
 if __name__ == "__main__":
 
-    ng.get_gpus(1)
+    ng.get_gpus(1, dedicated=False)
     args = parser.parse_args()
     config = ng.Config(args.config)
     logger = logging.getLogger()
@@ -36,14 +36,12 @@ if __name__ == "__main__":
     else:
         with open(config.DATA_FLIST[config.DATASET][1]) as f:
             val_fnames = f.read().splitlines()
-        static_images = []
-        for i in range(config.STATIC_VIEW_SIZE):
-            static_fnames = val_fnames[i:i+1]
-            static_image = ng.data.DataFromFNames(
+
+
+        static_fnames = val_fnames[:config.STATIC_VIEW_SIZE]
+        static_image = ng.data.DataFromFNames(
                 static_fnames, config.IMG_SHAPES, nthreads=1,
                 random_crop=config.RANDOM_CROP,gamma=config.GAMMA, exposure=config.EXPOSURE).data_pipeline(1)
-            static_images.append(static_image)
-
 
 
     if invert_mask:
@@ -72,20 +70,15 @@ if __name__ == "__main__":
             output = tf.reverse(output, [-1])
             output = tf.saturate_cast(output, tf.uint8)
         else:
-            outputs = []
-            reuse = False
-            for i in range(config.STATIC_VIEW_SIZE):
-                logger.info('building graph ' + str(i))
-                logger.info('input image size: ' + str(static_images[i].shape))
-                input_image = tf.concat([static_images[i], mask], axis=2)
-                logger.info('concat image size: ' + str(input_image.shape))
-                logger.info('mask size: ' + str(mask.shape))
-                output = model.build_server_graph(input_image, config=config, reuse=reuse)
-                output = (output + 1.) * 127.5
-                output = tf.reverse(output, [-1])
-                output = tf.saturate_cast(output, tf.uint8)
-                outputs.append(output)
-                reuse = True
+            logger.info('input image size: ' + str(static_image.shape))
+            input_image = tf.concat([static_image, mask], axis=2)
+            logger.info('concat image size: ' + str(input_image.shape))
+            logger.info('mask size: ' + str(mask.shape))
+            output = model.build_server_graph(input_image, config=config)
+            output = (output + 1.) * 127.5
+            output = tf.reverse(output, [-1])
+            output = tf.saturate_cast(output, tf.uint8)
+
         # load pretrained model
         vars_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
         assign_ops = []
@@ -103,9 +96,9 @@ if __name__ == "__main__":
             #f = h5py.File(args.output + '.h5', 'w')
             #f['output'] = result[0][:,:,::-1]
         else:
-            for i,output in enumerate(outputs):
+            tf.train.start_queue_runners(sess)
+            for i in range(config.STATIC_VIEW_SIZE):
                 logger.info('saving image ' + str(i))
-                tf.train.start_queue_runners(sess)
                 result = sess.run(output)
                 cv2.imwrite(os.path.join(args.output, str(i) + '.png'), result[0][:,:,::-1])
         

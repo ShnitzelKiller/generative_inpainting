@@ -2,3 +2,5 @@ model_logs
 neuralgym_logs
 data
 *~
+*.pyc
+training_data/data_flist/

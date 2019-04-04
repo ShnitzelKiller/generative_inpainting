@@ -17,7 +17,7 @@ np.random.seed(2018)
 
 @add_arg_scope
 def gen_conv(x, cnum, ksize, stride=1, rate=1, name='conv',
-             padding='SAME', activation=tf.nn.elu, training=True):
+             padding='SAME', activation=tf.nn.elu, training=True, gating=False):
     """Define conv for generator.
 
     Args:
@@ -40,14 +40,17 @@ def gen_conv(x, cnum, ksize, stride=1, rate=1, name='conv',
         p = int(rate*(ksize-1)/2)
         x = tf.pad(x, [[0,0], [p, p], [p, p], [0,0]], mode=padding)
         padding = 'VALID'
-    x = tf.layers.conv2d(
+    xnew = tf.layers.conv2d(
         x, cnum, ksize, stride, dilation_rate=rate,
         activation=activation, padding=padding, name=name)
-    return x
-
+    if gating:
+        g = tf.layers.conv2d(
+            x, cnum, ksize, stride, dilation_rate=rate, activation=tf.nn.sigmoid, padding=padding, name=name+'_gating')
+        xnew = xnew * g
+    return xnew
 
 @add_arg_scope
-def gen_deconv(x, cnum, name='upsample', padding='SAME', training=True):
+def gen_deconv(x, cnum, name='upsample', padding='SAME', training=True, gating=False):
     """Define deconv for generator.
     The deconv is defined to be a x2 resize_nearest_neighbor operation with
     additional gen_conv operation.
@@ -66,7 +69,7 @@ def gen_deconv(x, cnum, name='upsample', padding='SAME', training=True):
         x = resize(x, func=tf.image.resize_nearest_neighbor)
         x = gen_conv(
             x, cnum, 3, 1, name=name+'_conv', padding=padding,
-            training=training)
+            training=training, gating=gating)
     return x
 
 

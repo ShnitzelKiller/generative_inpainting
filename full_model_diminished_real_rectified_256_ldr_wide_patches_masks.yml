@@ -2,7 +2,7 @@
 DATASET: 'diminished' #'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
 RANDOM_CROP: True
 VAL: False
-LOG_DIR: full_model_diminished_rectified_256_thumb_multires_3_levels
+LOG_DIR: full_model_diminished_real_rectified_256_thumb_wide_patches_masks
 MODEL_RESTORE: ''
 
 GAN: 'wgan_gp'  # 'dcgan', 'lsgan', 'wgan_gp', 'one_wgan_gp'
@@ -16,15 +16,15 @@ GAN_WITH_MASK: False
 DISCOUNTED_MASK: True
 RANDOM_SEED: False
 PADDING: 'SAME'
-PATCH_KSIZE: 3
+PATCH_KSIZE: 5
 PATCH_STRIDE: 1
 PATCH_RATE: 2
-MULTIRES: True
-LEVELS: 3
+MULTIRES: False
+LEVELS: 1
 GAMMA: 1
 EXPOSURE: 1
-GATING: False
 ATTENTION_MASK: False
+GATING: True
 
 # training
 NUM_GPUS: 1
@@ -60,8 +60,8 @@ DATA_FLIST:
     'data/imagenet/validation_static_view.flist',
   ]
   diminished: [
-    'training_data/data_flist/train_rectified_thumb_shuffled.flist',
-    'training_data/data_flist/validation_rectified_thumb_shuffled.flist'
+    'training_data/data_flist/train_rectified_thumb_masks_shuffled.flist',
+    'training_data/data_flist/train_rectified_thumb_masks_shuffled.flist'
   ]
 
 STATIC_VIEW_SIZE: 30

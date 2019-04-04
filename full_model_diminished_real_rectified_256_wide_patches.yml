@@ -21,6 +21,10 @@ PATCH_STRIDE: 1
 PATCH_RATE: 2
 MULTIRES: False
 LEVELS: 3
+GAMMA: 0.4545
+EXPOSURE: 1
+ATTENTION_MASK: False
+GATING: False
 
 # training
 NUM_GPUS: 1
@@ -56,8 +60,8 @@ DATA_FLIST:
     'data/imagenet/validation_static_view.flist',
   ]
   diminished: [
-    'training_data/data_flist/train_real_rectified_shuffled.flist',
-    'training_data/data_flist/validation_real_rectified_shuffled.flist'
+    'training_data/data_flist/train_rectified_thumb_masks_shuffled.flist',
+    'training_data/data_flist/train_rectified_thumb_masks_shuffled.flist'
   ]
 
 STATIC_VIEW_SIZE: 30

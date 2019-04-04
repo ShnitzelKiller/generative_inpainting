@@ -40,8 +40,12 @@ class InpaintCAModel(Model):
         offset_flow = None
         ones_x = tf.ones_like(x)[:, :, :, 0:1]
         x = tf.concat([x, ones_x, ones_x*mask], axis=3)
-        if exclusionmask is not None:
-            exclusionmask = tf.cast(tf.less(exclusionmask[:,:,:,0:1], 127.5), tf.float32)
+        hasmask = exclusionmask is not None
+        if hasmask:
+            exclusionmask = tf.cast(tf.less(exclusionmask[:,:,:,0:1], 0.5), tf.float32)
+            if config.GATING:
+                x = tf.concat([x, exclusionmask], axis=3)
+        use_gating = hasmask and config.GATING
 
         # two stage network
         cnum = 32
@@ -77,27 +81,30 @@ class InpaintCAModel(Model):
             x.set_shape(xin.get_shape().as_list())
             # conv branch
             xnow = tf.concat([x, ones_x, ones_x*mask], axis=3)
-            x = gen_conv(xnow, cnum, 5, 1, name='xconv1')
-            x = gen_conv(x, cnum, 3, 2, name='xconv2_downsample')
-            x = gen_conv(x, 2*cnum, 3, 1, name='xconv3')
-            x = gen_conv(x, 2*cnum, 3, 2, name='xconv4_downsample')
-            x = gen_conv(x, 4*cnum, 3, 1, name='xconv5')
-            x = gen_conv(x, 4*cnum, 3, 1, name='xconv6')
-            x = gen_conv(x, 4*cnum, 3, rate=2, name='xconv7_atrous')
-            x = gen_conv(x, 4*cnum, 3, rate=4, name='xconv8_atrous')
-            x = gen_conv(x, 4*cnum, 3, rate=8, name='xconv9_atrous')
-            x = gen_conv(x, 4*cnum, 3, rate=16, name='xconv10_atrous')
+            if use_gating:
+                xnow = tf.concat([xnow, exclusionmask], axis=3)
+            x = gen_conv(xnow, cnum, 5, 1, name='xconv1', gating=use_gating)
+            x = gen_conv(x, cnum, 3, 2, name='xconv2_downsample', gating=use_gating)
+            x = gen_conv(x, 2*cnum, 3, 1, name='xconv3', gating=use_gating)
+            x = gen_conv(x, 2*cnum, 3, 2, name='xconv4_downsample', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, 1, name='xconv5', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, 1, name='xconv6', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, rate=2, name='xconv7_atrous', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, rate=4, name='xconv8_atrous', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, rate=8, name='xconv9_atrous', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, rate=16, name='xconv10_atrous', gating=use_gating)
             x_hallu = x
             # attention branch
-            x = gen_conv(xnow, cnum, 5, 1, name='pmconv1')
-            x = gen_conv(x, cnum, 3, 2, name='pmconv2_downsample')
-            x = gen_conv(x, 2*cnum, 3, 1, name='pmconv3')
-            x = gen_conv(x, 4*cnum, 3, 2, name='pmconv4_downsample')
-            x = gen_conv(x, 4*cnum, 3, 1, name='pmconv5')
+            x = gen_conv(xnow, cnum, 5, 1, name='pmconv1', gating=use_gating)
+            x = gen_conv(x, cnum, 3, 2, name='pmconv2_downsample', gating=use_gating)
+            x = gen_conv(x, 2*cnum, 3, 1, name='pmconv3', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, 2, name='pmconv4_downsample', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, 1, name='pmconv5', gating=use_gating)
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv6',
-                         activation=tf.nn.relu)
+                         activation=tf.nn.relu, gating=use_gating)
             flows = []
-            if exclusionmask is not None:
+            use_attentionmask = hasmask and config.ATTENTION_MASK
+            if use_attentionmask:
                 ex_mask_s = resize_mask_like(exclusionmask, x)
             if multires: #scale down feature map, run contextual attention, scale up and paste inpainted region into original feature map
                 logger.info('USING MULTIRES')
@@ -105,24 +112,24 @@ class InpaintCAModel(Model):
                 logger.info('original mask shape: ' + str(mask_s.shape))
                 x_multi = [x]
                 mask_multi = [mask_s]
-                if exclusionmask is not None:
+                if use_attentionmask:
                     exclusion_mask_multi = [ex_mask_s]
                 for i in range(config.LEVELS-1):
                     #x = gen_conv(x, 4*cnum, 3, 2, name='pyramid_downsample_'+str(i+1))
                     x = resize(x, scale=0.5)
                     x_multi.append(x)
                     mask_multi.append(resize_mask_like(mask_s, x))
-                    if exclusionmask is not None:
+                    if use_attentionmask:
                         exclusion_mask_multi.append(resize_mask_like(ex_mask_s, x))
                         logger.info('exclusionmask shape: ' + str(exclusion_mask_multi[i+1].shape))
                     logger.info('x shape: ' + str(x_multi[i+1].shape))
                     logger.info('mask shape: ' + str(mask_multi[i+1].shape))
                 x_multi.reverse()
                 mask_multi.reverse()
-                if exclusionmask is not None:
+                if use_attentionmask:
                     exclusion_mask_multi.reverse()
                 for i in range(config.LEVELS-1):
-                    if exclusionmask is not None:
+                    if use_attentionmask:
                         totalmask = mask_multi[i] + exclusion_mask_multi[i]
                         print('total mask shape:', totalmask.shape)
                     else:
@@ -134,20 +141,20 @@ class InpaintCAModel(Model):
                     x = x * mask_multi[i+1] + x_multi[i+1] * (1.-mask_multi[i+1])
                     logger.info('upsampled x shape: ' + str(x.shape))
 
-            x, offset_flow = contextual_attention(x, x, tf.tile(mask_s, [config.BATCH_SIZE, 1, 1, 1]) if exclusionmask is None else mask_s + ex_mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
+            x, offset_flow = contextual_attention(x, x, tf.tile(mask_s, [config.BATCH_SIZE, 1, 1, 1]) if not use_attentionmask else mask_s + ex_mask_s, ksize=config.PATCH_KSIZE, stride=config.PATCH_STRIDE, rate=config.PATCH_RATE)
             flows.append(offset_flow)
-            x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
-            x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10')
+            x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10', gating=use_gating)
             pm = x
             x = tf.concat([x_hallu, pm], axis=3) #join branches together
 
-            x = gen_conv(x, 4*cnum, 3, 1, name='allconv11')
-            x = gen_conv(x, 4*cnum, 3, 1, name='allconv12')
-            x = gen_deconv(x, 2*cnum, name='allconv13_upsample')
-            x = gen_conv(x, 2*cnum, 3, 1, name='allconv14')
-            x = gen_deconv(x, cnum, name='allconv15_upsample')
-            x = gen_conv(x, cnum//2, 3, 1, name='allconv16')
-            x = gen_conv(x, 3, 3, 1, activation=None, name='allconv17')
+            x = gen_conv(x, 4*cnum, 3, 1, name='allconv11', gating=use_gating)
+            x = gen_conv(x, 4*cnum, 3, 1, name='allconv12', gating=use_gating)
+            x = gen_deconv(x, 2*cnum, name='allconv13_upsample', gating=use_gating)
+            x = gen_conv(x, 2*cnum, 3, 1, name='allconv14', gating=use_gating)
+            x = gen_deconv(x, cnum, name='allconv15_upsample', gating=use_gating)
+            x = gen_conv(x, cnum//2, 3, 1, name='allconv16', gating=use_gating)
+            x = gen_conv(x, 3, 3, 1, activation=None, name='allconv17', gating=use_gating)
             x_stage2 = tf.clip_by_value(x, -1., 1.)
         return x_stage1, x_stage2, flows
 

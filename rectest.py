@@ -15,6 +15,7 @@ parser.add_argument('--imagepath', default='', type=str, help='directory of imag
 parser.add_argument('--suffix', default='_N_T.exr', type=str, help='suffix of images')
 parser.add_argument('--maskpath', default=None, type=str, help='where to look for masks')
 parser.add_argument('--masksuffix', default='objectmask.png', type=str, help='suffix of masks')
+parser.add_argument('--skip', default=None, type=str, help='--skip (mask | image): skip outputting the mask or image')
 
 
 if __name__ == "__main__":
@@ -40,24 +41,26 @@ if __name__ == "__main__":
             print(tail)
             print('theta',theta)
             print('phi:',phi)
-            image = cv2.imread(os.path.join(args.imagepath, file), cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
-            if image is not None:
-                imagerec = computeRectification(image.astype(np.float64), theta, phi, texres=args.resolution)
-                #cv2.imwrite(os.path.join(args.output, tail), imagerec.astype(np.float32))
-                cv2.imwrite(os.path.join(args.output, tail + '.png'), np.clip((imagerec**0.4545)*255, 0, 255).astype(np.uint8))
-            else:
-                print(file, 'not found')
-            if args.maskpath is not None:
-                mask = masks[i]
-                mhead, mtail = os.path.split(mask)
-                print(mtail)
-                maskimg = cv2.imread(os.path.join(args.maskpath, mask))
-                if maskimg is not None:
-                    maskrec = computeRectification(maskimg, theta, phi, texres=args.resolution)
-                    maskrec = (maskrec == 1) * 255
-                    cv2.imwrite(os.path.join(args.output, mtail), maskrec)
+            if not args.skip == 'image':
+                image = cv2.imread(os.path.join(args.imagepath, file), cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
+                if image is not None:
+                    imagerec = computeRectification(image.astype(np.float64), theta, phi, texres=args.resolution)
+                    #cv2.imwrite(os.path.join(args.output, tail), imagerec.astype(np.float32))
+                    cv2.imwrite(os.path.join(args.output, tail + '.png'), np.clip((imagerec**0.4545)*255, 0, 255).astype(np.uint8))
                 else:
-                    print('mask', mask, 'not found')
+                    print(file, 'not found')
+            if not args.skip == 'mask':
+                if args.maskpath is not None:
+                    mask = masks[i]
+                    mhead, mtail = os.path.split(mask)
+                    print(mtail)
+                    maskimg = cv2.imread(os.path.join(args.maskpath, mask))
+                    if maskimg is not None:
+                        maskrec = computeRectification(maskimg, theta, phi, texres=args.resolution)
+                        maskrec = (maskrec == 1) * 255
+                        cv2.imwrite(os.path.join(args.output, mtail), maskrec)
+                    else:
+                        print('mask', mask, 'not found')
             
             
     else:

@@ -23,7 +23,7 @@ parser.add_argument('--config', default='inpaint.yml', type=str, help='config fi
 
 if __name__ == "__main__":
 
-    ng.get_gpus(1)
+    ng.get_gpus(1, dedicated=False)
     args = parser.parse_args()
     config = ng.Config(args.config)
     logger = logging.getLogger()
