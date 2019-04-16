@@ -9,6 +9,7 @@ from neuralgym.ops.layers import resize
 from neuralgym.ops.layers import *
 from neuralgym.ops.loss_ops import *
 from neuralgym.ops.summary_ops import *
+from neuralgym.ops.gan_ops import conv2d_spectral_norm
 
 
 logger = logging.getLogger()
@@ -40,13 +41,17 @@ def gen_conv(x, cnum, ksize, stride=1, rate=1, name='conv',
         p = int(rate*(ksize-1)/2)
         x = tf.pad(x, [[0,0], [p, p], [p, p], [0,0]], mode=padding)
         padding = 'VALID'
-    xnew = tf.layers.conv2d(
-        x, cnum, ksize, stride, dilation_rate=rate,
-        activation=activation, padding=padding, name=name)
     if gating:
-        g = tf.layers.conv2d(
-            x, cnum, ksize, stride, dilation_rate=rate, activation=tf.nn.sigmoid, padding=padding, name=name+'_gating')
-        xnew = xnew * g
+        xnew = tf.layers.conv2d(
+            x, cnum*2, ksize, stride, dilation_rate=rate,
+            activation=None, padding=padding, name=name)
+        x1, x2 = tf.split(xnew, 2, axis=3)
+        x1 = x1 if activation is None else activation(x1)
+        xnew = x1 * tf.nn.sigmoid(x2)
+    else:
+        xnew = tf.layers.conv2d(
+            x, cnum, ksize, stride, dilation_rate=rate,
+            activation=activation, padding=padding, name=name)
     return xnew
 
 @add_arg_scope
@@ -94,6 +99,10 @@ def dis_conv(x, cnum, ksize=5, stride=2, name='conv', training=True):
     x = tf.nn.leaky_relu(x)
     return x
 
+def sn_dis_conv(x, cnum, ksize=5, stride=2, name='snconv', training=True):
+    x = conv2d_spectral_norm(x, cnum, ksize, stride, 'SAME', name=name)
+    x = tf.nn.leaky_relu(x)
+    return x
 
 def random_bbox(config):
     """Generate a random tlhw with configuration.

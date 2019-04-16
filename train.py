@@ -34,12 +34,12 @@ if __name__ == "__main__":
     if config.GPU_ID != -1:
         ng.set_gpus(config.GPU_ID)
     else:
-        ng.get_gpus(config.NUM_GPUS)
+        ng.get_gpus(config.NUM_GPUS, dedicated=False)
     # training data
     with open(config.DATA_FLIST[config.DATASET][0]) as f:
         fnames = f.read().splitlines()
     data = ng.data.DataFromFNames(
-        fnames, config.IMG_SHAPES, random_crop=config.RANDOM_CROP, gamma=config.GAMMA, exposure=config.EXPOSURE)
+        fnames, config.IMG_SHAPES, random_crop=config.RANDOM_CROP, random_flip=config.RANDOM_FLIP, gamma=config.GAMMA, exposure=config.EXPOSURE)
     images = data.data_pipeline(config.BATCH_SIZE)
     # main model
     model = InpaintCAModel()
@@ -54,7 +54,7 @@ if __name__ == "__main__":
             static_fnames = val_fnames[i:i+1]
             static_images = ng.data.DataFromFNames(
                 static_fnames, config.IMG_SHAPES, nthreads=1,
-                random_crop=config.RANDOM_CROP).data_pipeline(1)
+                random_crop=config.RANDOM_CROP, random_flip=config.RANDOM_FLIP).data_pipeline(1)
             static_inpainted_images = model.build_static_infer_graph(
                 static_images, config, name='static_view/%d' % i)
     # training settings
