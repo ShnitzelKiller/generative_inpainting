@@ -1,20 +1,20 @@
 # parameters
 DATASET: 'diminished' #'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
 RANDOM_CROP: True
-RANDOM_FLIP: False
+RANDOM_FLIP: True
 VAL: False
-LOG_DIR: full_model_diminished_rectified_256_thumb_wide_patches
-MODEL_RESTORE: '' 
+LOG_DIR: sngan_real_256_thumb_wide_patches_gating_trainmask
+MODEL_RESTORE: ''
 
-GAN: 'wgan_gp'  # 'dcgan', 'lsgan', 'wgan_gp', 'one_wgan_gp'
+GAN: 'sngan'  # 'wgan_gp', 'dcgan', 'lsgan', 'wgan_gp', 'one_wgan_gp'
 PRETRAIN_COARSE_NETWORK: False
-GAN_LOSS_ALPHA: 0.001  # dcgan: 0.0008, wgan: 0.0005, onegan: 0.001
+GAN_LOSS_ALPHA: 1.0  # dcgan: 0.0008, wgan: 0.0005, onegan: 0.001, sngan 1.0
 WGAN_GP_LAMBDA: 10
 COARSE_L1_ALPHA: 1.2
-L1_LOSS_ALPHA: 1.2
-AE_LOSS_ALPHA: 1.2
+L1_LOSS_ALPHA: 1.0
+AE_LOSS_ALPHA: 1.0
 GAN_WITH_MASK: False
-DISCOUNTED_MASK: True
+DISCOUNTED_MASK: False
 RANDOM_SEED: False
 PADDING: 'SAME'
 PATCH_KSIZE: 5
@@ -24,8 +24,8 @@ MULTIRES: False
 LEVELS: 1
 GAMMA: 1
 EXPOSURE: 1
-GATING: False
 ATTENTION_MASK: False
+GATING: True
 
 # training
 NUM_GPUS: 1
@@ -37,8 +37,6 @@ GRADS_SUMMARY: False
 GRADIENT_CLIP: False
 GRADIENT_CLIP_VALUE: 0.1
 VAL_PSTEPS: 1000
-GAMMA: 0.45455
-EXPOSURE: 1
 
 # data
 DATA_FLIST:
@@ -63,24 +61,24 @@ DATA_FLIST:
     'data/imagenet/validation_static_view.flist',
   ]
   diminished: [
-    'training_data/data_flist/train_rectified_thumb_shuffled.flist',
-    'training_data/data_flist/validation_rectified_thumb_shuffled.flist'
+    '/data/rectified_inpainting/train_real_rectified_shuffled.flist',
+    '/data/rectified_inpainting/validation_real_rectified_shuffled.flist'
   ]
 
 STATIC_VIEW_SIZE: 30
 IMG_SHAPES: [256, 256, 3]
-GEN_MASKS: True
+GEN_MASKS: False
 EXC_MASKS: False
-HEIGHT: 128
-WIDTH: 128
-MAX_DELTA_HEIGHT: 32
-MAX_DELTA_WIDTH: 32
+HEIGHT: 96
+WIDTH: 96
+MAX_DELTA_HEIGHT: 0
+MAX_DELTA_WIDTH: 0
 BATCH_SIZE: 16
 VERTICAL_MARGIN: 0
 HORIZONTAL_MARGIN: 0
 
 # loss
-AE_LOSS: True
+AE_LOSS: False
 L1_LOSS: True
 GLOBAL_DCGAN_LOSS_ALPHA: 1.
 GLOBAL_WGAN_LOSS_ALPHA: 1.

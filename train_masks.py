@@ -12,17 +12,21 @@ from inpaint_model import InpaintCAModel
 logger = logging.getLogger()
 
 
-def multigpu_graph_def(model, data, config, gpu_id=0, loss_type='g'):
+def multigpu_graph_def(model, data, config, gpu_id=0, loss_type='g', mask_index = -1, exclusionmask_index = -1):
     with tf.device('/cpu:0'):
         images0 = data.data_pipeline(config.BATCH_SIZE)
-        images = images0[0]
-        masks = images0[1]
-    if gpu_id == 0 and loss_type == 'g':
+        if isinstance(images0, tuple):
+            images = images0[0]
+            masks = None config.GEN_MASKS is None else images0[mask_index]
+            exclusionmasks = images0[exclusionmask_index] if config.EXC_MASKS else None
+        else:
+            images = images0
+            masks = None
+            exclusionmasks = None
+
         _, _, losses = model.build_graph_with_losses(
-            images, config, summary=True, reuse=True, exclusionmask=masks)
-    else:
-        _, _, losses = model.build_graph_with_losses(
-            images, config, reuse=True, exclusionmask=masks)
+            images, config, summary=gpu_id == 0 and loss_type == 'g', reuse=True, mask=masks, exclusionmask=exclusionmasks)
+
     if loss_type == 'g':
         return losses['g_loss']
     elif loss_type == 'd':
@@ -36,17 +40,35 @@ if __name__ == "__main__":
     if config.GPU_ID != -1:
         ng.set_gpus(config.GPU_ID)
     else:
-        ng.get_gpus(config.NUM_GPUS)
+        ng.get_gpus(config.NUM_GPUS, dedicated=True) #TODO: handle partial use better
     # training data
     with open(config.DATA_FLIST[config.DATASET][0]) as f:
-        fnames = [(l.split(' ')[0], l.split(' ')[1]) for l in f.read().splitlines()]
+        count = 1
+        mask_index = -1
+        exclusionmask_index = -1
+        if not config.GEN_MASKS:
+            mask_index = count
+            count += 1
+        if config.EXC_MASKS:
+            exclusionmask_index = count
+            count += 1
+        if count == 1:
+            fnames = f.read().splitlines()
+        elif count == 2:
+            fnames = [(l.split(' ')[0], l.split(' ')[1]) for l in f.read().splitlines()]
+        elif count == 3:
+            fnames = [(l.split(' ')[0], l.split(' ')[1], l.split(' ')[2]) for l in f.read().splitlines()]
+        else:
+            print('invalid data count')
+            exit()
+            
     data = ng.data.DataFromFNames(
-        fnames, config.IMG_SHAPES, random_crop=config.RANDOM_CROP, gamma=config.GAMMA, exposure=config.EXPOSURE)
+        fnames, config.IMG_SHAPES, random_crop=config.RANDOM_CROP, gamma=config.GAMMA, exposure=config.EXPOSURE, random_flip = config.RANDOM_FLIP)
     images = data.data_pipeline(config.BATCH_SIZE)
     # main model
     model = InpaintCAModel()
     g_vars, d_vars, losses = model.build_graph_with_losses(
-        images[0], config=config, exclusionmask=images[1])
+        images[0], config=config, exclusionmask=images[exclusionmask_index] if config.EXC_MASKS else None, mask=None if config.GEN_MASKS else images[mask_index])
     # validation images
     if config.VAL:
         with open(config.DATA_FLIST[config.DATASET][1]) as f:
@@ -56,9 +78,9 @@ if __name__ == "__main__":
             static_fnames = val_fnames[i:i+1]
             static_images = ng.data.DataFromFNames(
                 static_fnames, config.IMG_SHAPES, nthreads=1,
-                random_crop=config.RANDOM_CROP).data_pipeline(1)
+                random_crop=config.RANDOM_CROP, random_flip=config.RANDOM_FLIP).data_pipeline(1)
             static_inpainted_images = model.build_static_infer_graph(
-                static_images[0], config, name='static_view/%d' % i, exclusionmask=images[1])
+                static_images[0], config, name='static_view/%d' % i, exclusionmask=images[exclusionmask_index] if config.EXC_MASKS else None)
     # training settings
     lr = tf.get_variable(
         'lr', shape=[], trainable=False,
@@ -86,7 +108,7 @@ if __name__ == "__main__":
         max_iters=5,
         graph_def=multigpu_graph_def,
         graph_def_kwargs={
-            'model': model, 'data': data, 'config': config, 'loss_type': 'd'},
+            'model': model, 'data': data, 'config': config, 'loss_type': 'd', 'mask_index': mask_index, 'exclusionmask_index': exclusionmask_index},
     )
     # train generator with primary trainer
     trainer = ng.train.Trainer(

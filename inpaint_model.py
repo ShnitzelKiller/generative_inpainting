@@ -203,11 +203,16 @@ class InpaintCAModel(Model):
                                 summary=False, reuse=False, exclusionmask=None, mask=None):
         batch_pos = batch_data / 127.5 - 1.
         # generate mask, 1 represents masked point
+        use_local_patch = False
         if mask is None:
             bbox = random_bbox(config)
             mask = bbox2mask(bbox, config, name='mask_c')
+            if config.GAN == 'wgan_gp':
+                use_local_patch = True
         else:
+            #bbox = (0, 0, config.IMG_SHAPES[0], config.IMG_SHAPES[1])
             mask = tf.cast(tf.less(0.5, mask[:,:,:,0:1]), tf.float32)
+
         batch_incomplete = batch_pos*(1.-mask)
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=reuse, training=training,
@@ -221,24 +226,33 @@ class InpaintCAModel(Model):
         losses = {}
         # apply mask and complete image
         batch_complete = batch_predicted*mask + batch_incomplete*(1.-mask)
-        # local patches
-        local_patch_batch_pos = local_patch(batch_pos, bbox)
-        local_patch_batch_predicted = local_patch(batch_predicted, bbox)
-        local_patch_x1 = local_patch(x1, bbox)
-        local_patch_x2 = local_patch(x2, bbox)
-        local_patch_batch_complete = local_patch(batch_complete, bbox)
-        local_patch_mask = local_patch(mask, bbox)
         l1_alpha = config.COARSE_L1_ALPHA
-        losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x1)*spatial_discounting_mask(config))
-        if not config.PRETRAIN_COARSE_NETWORK:
-            losses['l1_loss'] += tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x2)*spatial_discounting_mask(config))
-        losses['ae_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1) * (1.-mask))
-        if not config.PRETRAIN_COARSE_NETWORK:
-            losses['ae_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2) * (1.-mask))
-        losses['ae_loss'] /= tf.reduce_mean(1.-mask)
+        # local patches
+        if use_local_patch:
+            local_patch_batch_pos = local_patch(batch_pos, bbox)
+            local_patch_batch_predicted = local_patch(batch_predicted, bbox)
+            local_patch_x1 = local_patch(x1, bbox)
+            local_patch_x2 = local_patch(x2, bbox)
+            local_patch_batch_complete = local_patch(batch_complete, bbox)
+            local_patch_mask = local_patch(mask, bbox)
+        
+            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x1)*spatial_discounting_mask(config))
+            if not config.PRETRAIN_COARSE_NETWORK:
+                losses['l1_loss'] += tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x2)*spatial_discounting_mask(config))
+
+            losses['ae_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1) * (1.-mask))
+            if not config.PRETRAIN_COARSE_NETWORK:
+                losses['ae_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2) * (1.-mask))
+            losses['ae_loss'] /= tf.reduce_mean(1.-mask)
+        else:
+            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1))
+            if not config.PRETRAIN_COARSE_NETWORK:
+                losses['l1_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2))
+
         if summary:
             scalar_summary('losses/l1_loss', losses['l1_loss'])
-            scalar_summary('losses/ae_loss', losses['ae_loss'])
+            if use_local_patch:
+                scalar_summary('losses/ae_loss', losses['ae_loss'])
             img_size = [dim for dim in batch_incomplete.shape]
             img_size[2] = 5
             border = tf.zeros(tf.TensorShape(img_size))
@@ -262,11 +276,13 @@ class InpaintCAModel(Model):
         # gan
         batch_pos_neg = tf.concat([batch_pos, batch_complete], axis=0)
         # local deterministic patch
-        local_patch_batch_pos_neg = tf.concat([local_patch_batch_pos, local_patch_batch_complete], 0)
         if config.GAN_WITH_MASK:
             batch_pos_neg = tf.concat([batch_pos_neg, tf.tile(mask, [config.BATCH_SIZE*2, 1, 1, 1])], axis=3)
         # wgan with gradient penalty
         if config.GAN == 'wgan_gp':
+            if not use_local_patch:
+                raise Exception('wgan_gp requires global and local patch')
+            local_patch_batch_pos_neg = tf.concat([local_patch_batch_pos, local_patch_batch_complete], 0)
             # seperate gan
             pos_neg_local, pos_neg_global = self.build_wgan_discriminator(local_patch_batch_pos_neg, batch_pos_neg, training=training, reuse=reuse)
             pos_local, neg_local = tf.split(pos_neg_local, 2)
@@ -296,6 +312,8 @@ class InpaintCAModel(Model):
                 scalar_summary('gan_wgan_loss/gp_penalty_local', penalty_local)
                 scalar_summary('gan_wgan_loss/gp_penalty_global', penalty_global)
         elif config.GAN == 'sngan':
+            if use_local_patch:
+                raise Exception('sngan incompatible with global and local patch')
             pos_neg = self.build_sngan_discriminator(batch_pos_neg, name='discriminator', reuse=reuse)
             pos, neg = tf.split(pos_neg, 2)
             g_loss, d_loss = gan_hinge_loss(pos, neg)
@@ -313,8 +331,9 @@ class InpaintCAModel(Model):
             gradients_summary(losses['g_loss'], x2, name='g_loss_to_x2')
             gradients_summary(losses['l1_loss'], x1, name='l1_loss_to_x1')
             gradients_summary(losses['l1_loss'], x2, name='l1_loss_to_x2')
-            gradients_summary(losses['ae_loss'], x1, name='ae_loss_to_x1')
-            gradients_summary(losses['ae_loss'], x2, name='ae_loss_to_x2')
+            if use_local_patch:
+                gradients_summary(losses['ae_loss'], x1, name='ae_loss_to_x1')
+                gradients_summary(losses['ae_loss'], x2, name='ae_loss_to_x2')
         if config.PRETRAIN_COARSE_NETWORK:
             losses['g_loss'] = 0
         else:
@@ -322,7 +341,7 @@ class InpaintCAModel(Model):
         losses['g_loss'] += config.L1_LOSS_ALPHA * losses['l1_loss']
         logger.info('Set L1_LOSS_ALPHA to %f' % config.L1_LOSS_ALPHA)
         logger.info('Set GAN_LOSS_ALPHA to %f' % config.GAN_LOSS_ALPHA)
-        if config.AE_LOSS:
+        if config.AE_LOSS and use_local_patch:
             losses['g_loss'] += config.AE_LOSS_ALPHA * losses['ae_loss']
             logger.info('Set AE_LOSS_ALPHA to %f' % config.AE_LOSS_ALPHA)
         g_vars = tf.get_collection(
