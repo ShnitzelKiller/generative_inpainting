@@ -15,17 +15,23 @@ logger = logging.getLogger()
 def multigpu_graph_def(model, data, config, gpu_id=0, loss_type='g', mask_index = -1, exclusionmask_index = -1):
     with tf.device('/cpu:0'):
         images0 = data.data_pipeline(config.BATCH_SIZE)
-        if isinstance(images0, tuple):
+        if isinstance(images0, list):
+            print('dataset is tuples')
             images = images0[0]
-            masks = None config.GEN_MASKS is None else images0[mask_index]
+            masks = None if config.GEN_MASKS is None else images0[mask_index]
             exclusionmasks = images0[exclusionmask_index] if config.EXC_MASKS else None
         else:
+            print('dataset is single image')
             images = images0
             masks = None
             exclusionmasks = None
-
+        
+        print(mask_index)
+        print(exclusionmask_index)
+        print(masks.shape)
+        print(exclusionmasks)
         _, _, losses = model.build_graph_with_losses(
-            images, config, summary=gpu_id == 0 and loss_type == 'g', reuse=True, mask=masks, exclusionmask=exclusionmasks)
+            images, config, summary=(gpu_id == 0) and (loss_type == 'g'), reuse=True, mask=masks, exclusionmask=exclusionmasks)
 
     if loss_type == 'g':
         return losses['g_loss']
@@ -119,7 +125,7 @@ if __name__ == "__main__":
         grads_summary=config.GRADS_SUMMARY,
         gradient_processor=gradient_processor,
         graph_def_kwargs={
-            'model': model, 'data': data, 'config': config, 'loss_type': 'g'},
+            'model': model, 'data': data, 'config': config, 'loss_type': 'g', 'mask_index': mask_index, 'exclusionmask_index': exclusionmask_index},
         spe=config.TRAIN_SPE,
         log_dir=log_prefix,
     )
