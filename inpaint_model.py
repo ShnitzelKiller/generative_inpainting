@@ -43,7 +43,7 @@ class InpaintCAModel(Model):
         hasmask = exclusionmask is not None
         if hasmask:
             exclusionmask = tf.cast(tf.less(exclusionmask[:,:,:,0:1], 0.5), tf.float32)
-            x = tf.concat([x, exclusionmask], axis=3)
+            #x = tf.concat([x, exclusionmask], axis=3)
         use_gating = config.GATING
 
         # two stage network
@@ -80,8 +80,8 @@ class InpaintCAModel(Model):
             x.set_shape(xin.get_shape().as_list())
             # conv branch
             xnow = tf.concat([x, ones_x, ones_x*mask], axis=3)
-            if hasmask:
-                xnow = tf.concat([xnow, exclusionmask], axis=3)
+            #if hasmask:
+            #    xnow = tf.concat([xnow, exclusionmask], axis=3)
             x = gen_conv(xnow, cnum, 5, 1, name='xconv1', gating=use_gating)
             x = gen_conv(x, cnum, 3, 2, name='xconv2_downsample', gating=use_gating)
             x = gen_conv(x, 2*cnum, 3, 1, name='xconv3', gating=use_gating)
@@ -212,6 +212,8 @@ class InpaintCAModel(Model):
         else:
             #bbox = (0, 0, config.IMG_SHAPES[0], config.IMG_SHAPES[1])
             mask = tf.cast(tf.less(0.5, mask[:,:,:,0:1]), tf.float32)
+        if exclusionmask is not None:
+            loss_mask = tf.cast(tf.less(0.5, exclusionmask[:,:,:,0:1]), tf.float32)
 
         batch_incomplete = batch_pos*(1.-mask)
         x1, x2, offset_flow = self.build_inpaint_net(
@@ -236,18 +238,20 @@ class InpaintCAModel(Model):
             local_patch_batch_complete = local_patch(batch_complete, bbox)
             local_patch_mask = local_patch(mask, bbox)
         
-            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x1)*spatial_discounting_mask(config))
+            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x1)*spatial_discounting_mask(config)*loss_mask if exclusionmask is not None else 1)
             if not config.PRETRAIN_COARSE_NETWORK:
-                losses['l1_loss'] += tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x2)*spatial_discounting_mask(config))
+                losses['l1_loss'] += tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x2)*spatial_discounting_mask(config)*loss_mask if exclusionmask is not None else 1)
 
-            losses['ae_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1) * (1.-mask))
+            losses['ae_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1) * (1.-mask) * loss_mask if exclusionmask is not None else 1)
             if not config.PRETRAIN_COARSE_NETWORK:
-                losses['ae_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2) * (1.-mask))
+                losses['ae_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2) * (1.-mask)*loss_mask if exclusionmask is not None else 1)
             losses['ae_loss'] /= tf.reduce_mean(1.-mask)
         else:
-            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1))
+            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1)*loss_mask if exclusionmask is not None else 1)
             if not config.PRETRAIN_COARSE_NETWORK:
-                losses['l1_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2))
+                losses['l1_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2)*loss_mask if exclusionmask is not None else 1)
+
+        
 
         if summary:
             scalar_summary('losses/l1_loss', losses['l1_loss'])
@@ -322,6 +326,8 @@ class InpaintCAModel(Model):
             if summary and not config.PRETRAIN_COARSE_NETWORK:
                 gradients_summary(g_loss, batch_predicted, name='g_loss')
                 scalar_summary('convergence/d_loss', losses['d_loss'])
+        else:
+            losses['g_loss'] = 0
 
 
         if summary and not config.PRETRAIN_COARSE_NETWORK:
