@@ -238,18 +238,18 @@ class InpaintCAModel(Model):
             local_patch_batch_complete = local_patch(batch_complete, bbox)
             local_patch_mask = local_patch(mask, bbox)
         
-            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x1)*spatial_discounting_mask(config)*loss_mask if exclusionmask is not None else 1)
+            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x1)*spatial_discounting_mask(config)*(loss_mask if exclusionmask is not None else 1))
             if not config.PRETRAIN_COARSE_NETWORK:
-                losses['l1_loss'] += tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x2)*spatial_discounting_mask(config)*loss_mask if exclusionmask is not None else 1)
+                losses['l1_loss'] += tf.reduce_mean(tf.abs(local_patch_batch_pos - local_patch_x2)*spatial_discounting_mask(config)*(loss_mask if exclusionmask is not None else 1))
 
-            losses['ae_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1) * (1.-mask) * loss_mask if exclusionmask is not None else 1)
+            losses['ae_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1) * (1.-mask) * (loss_mask if exclusionmask is not None else 1))
             if not config.PRETRAIN_COARSE_NETWORK:
-                losses['ae_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2) * (1.-mask)*loss_mask if exclusionmask is not None else 1)
+                losses['ae_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2) * (1.-mask)*(loss_mask if exclusionmask is not None else 1))
             losses['ae_loss'] /= tf.reduce_mean(1.-mask)
         else:
-            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1)*loss_mask if exclusionmask is not None else 1)
+            losses['l1_loss'] = l1_alpha * tf.reduce_mean(tf.abs(batch_pos - x1)*(loss_mask if exclusionmask is not None else 1))
             if not config.PRETRAIN_COARSE_NETWORK:
-                losses['l1_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2)*loss_mask if exclusionmask is not None else 1)
+                losses['l1_loss'] += tf.reduce_mean(tf.abs(batch_pos - x2)*(loss_mask if exclusionmask is not None else 1))
 
         
 
