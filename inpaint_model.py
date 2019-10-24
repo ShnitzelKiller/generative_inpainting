@@ -40,7 +40,7 @@ class InpaintCAModel(Model):
         offset_flow = None
         ones_x = tf.ones_like(x)[:, :, :, 0:1]
         x = tf.concat([x, ones_x, ones_x*mask], axis=3)
-        hasmask = exclusionmask is not None
+        hasmask = False #TODO:  #exclusionmask is not None
         if hasmask:
             exclusionmask = tf.cast(tf.less(exclusionmask[:,:,:,0:1], 0.5), tf.float32)
             #x = tf.concat([x, exclusionmask], axis=3)
@@ -212,10 +212,19 @@ class InpaintCAModel(Model):
         else:
             #bbox = (0, 0, config.IMG_SHAPES[0], config.IMG_SHAPES[1])
             mask = tf.cast(tf.less(0.5, mask[:,:,:,0:1]), tf.float32)
-        if exclusionmask is not None:
-            loss_mask = tf.cast(tf.less(0.5, exclusionmask[:,:,:,0:1]), tf.float32)
+            if config.INVERT_MASK:
+                mask = 1-mask
 
         batch_incomplete = batch_pos*(1.-mask)
+
+        if exclusionmask is not None:
+            if config.INVERT_EXCLUSIONMASK:
+                loss_mask = tf.cast(tf.less(0.5, exclusionmask[:,:,:,0:1]), tf.float32) #keep white parts
+            else:
+                loss_mask = tf.cast(tf.less(exclusionmask[:,:,:,0:1], 0.5), tf.float32) #keep black parts
+            batch_incomplete = batch_incomplete * loss_mask
+            batch_pos = batch_pos * loss_mask
+
         x1, x2, offset_flow = self.build_inpaint_net(
             batch_incomplete, mask, config, reuse=reuse, training=training,
             padding=config.PADDING, exclusionmask=exclusionmask)
@@ -228,6 +237,9 @@ class InpaintCAModel(Model):
         losses = {}
         # apply mask and complete image
         batch_complete = batch_predicted*mask + batch_incomplete*(1.-mask)
+        if exclusionmask is not None:
+            batch_complete = batch_complete * loss_mask
+        
         l1_alpha = config.COARSE_L1_ALPHA
         # local patches
         if use_local_patch:

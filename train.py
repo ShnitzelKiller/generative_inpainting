@@ -6,6 +6,8 @@ import logging
 import tensorflow as tf
 import neuralgym as ng
 
+from argparse import ArgumentParser
+
 from inpaint_model import InpaintCAModel
 
 
@@ -30,7 +32,10 @@ def multigpu_graph_def(model, data, config, gpu_id=0, loss_type='g'):
 
 
 if __name__ == "__main__":
-    config = ng.Config('inpaint.yml')
+    parser = ArgumentParser()
+    parser.add_argument('config', default='inpaint.yml')
+    args = parser.parse_args()
+    config = ng.Config(args.config)
     if config.GPU_ID != -1:
         ng.set_gpus(config.GPU_ID)
     else:

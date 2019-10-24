@@ -1,4 +1,6 @@
 import argparse
+import os
+
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
         return True
@@ -6,3 +8,6 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
+def prepend_path(path, fname):
+    return fname if os.path.isabs(fname) else os.path.join(path, fname)
